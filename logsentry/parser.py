@@ -1,8 +1,9 @@
 """
-Parses SSH auth log lines into plain Python objects so the detector
-functions don't have to deal with regex or raw strings directly.
+Parses SSH auth log lines and Apache/Nginx access log lines into plain
+Python objects so the detector functions don't have to deal with regex
+or raw strings directly.
 
-I used a dataclass here instead of a dict mostly because I kept typing
+I used dataclasses here instead of dicts mostly because I kept typing
 event["timestamp"] wrong in an earlier throwaway script. event.timestamp
 felt safer and autocomplete actually works with it.
 """
@@ -19,6 +20,16 @@ class SSHEvent:
     ip: str
     event_type: str  # "failed" or "accepted"
     username: Optional[str] = None
+
+
+@dataclass
+class WebEvent:
+    timestamp: datetime
+    ip: str
+    method: str
+    path: str
+    status: int
+    size: Optional[int] = None
 
 
 # Matches a full syslog line, something like:
@@ -116,8 +127,49 @@ def parse_auth_log(path: str) -> List[SSHEvent]:
             # "Invalid user X from IP" lines usually show up right next to
             # a matching "Failed password for invalid user" line for the
             # same attempt, so counting both would double count the same
-            # login attempt. Skipping these on their own for now.
+            # login attempt. I'm skipping these on their own for now.
             if _SSH_INVALID_USER_RE.match(message):
                 continue
+
+    return events
+
+
+# Matches Apache/Nginx combined log format, e.g.:
+# 203.0.113.77 - - [15/Mar/2026:14:22:01 +0000] "GET /wp-login.php HTTP/1.1" 404 162 "-" "Mozilla/5.0"
+_WEB_LINE_RE = re.compile(
+    r'^(?P<ip>[\d.]+)\s+\S+\s+\S+\s+\[(?P<timestamp>[^\]]+)\]\s+'
+    r'"(?P<method>\S+)\s+(?P<path>\S+)\s+\S+"\s+'
+    r'(?P<status>\d{3})\s+(?P<size>\S+)'
+)
+
+
+def parse_access_log(path: str) -> List[WebEvent]:
+    events = []
+    with open(path, "r", errors="replace") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+
+            match = _WEB_LINE_RE.match(line)
+            if not match:
+                continue
+
+            try:
+                timestamp = datetime.strptime(match.group("timestamp"), "%d/%b/%Y:%H:%M:%S %z")
+            except ValueError:
+                continue
+
+            size_str = match.group("size")
+            size = None if size_str == "-" else int(size_str)
+
+            events.append(WebEvent(
+                timestamp=timestamp,
+                ip=match.group("ip"),
+                method=match.group("method"),
+                path=match.group("path"),
+                status=int(match.group("status")),
+                size=size,
+            ))
 
     return events
