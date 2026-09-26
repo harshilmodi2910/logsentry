@@ -1,38 +1,28 @@
 # LogSentry
 
-Command line tool that reads SSH auth logs and Apache/Nginx access logs and flags some common signs of trouble, brute force attempts, logins after a bunch of failures, IPs scanning for admin panels and config files, and logins at odd hours.
+Command line tool that parses SSH auth logs and Apache/Nginx access logs and flags brute force attempts, logins after repeated failures, web scanning behavior, and off-hours logins.
 
-Built alongside a Splunk lab I've been working through. Wanted something that does the analysis in code instead of clicking around a dashboard.
-
-Version 0.1. Works, but not close to done, read the limitations below before trusting it on anything real.
+Version 0.1, early and rough. Read the limitations below before trusting it on anything real.
 
 ## Running it
 
-Just Python 3.9+, no dependencies.
+Python 3.9+, no dependencies.
 
 \`\`\`
-git clone https://github.com/harshilmodi2910/logsentry.git
-cd logsentry
 python -m logsentry.cli --auth-log /var/log/auth.log --access-log /var/log/nginx/access.log
 \`\`\`
 
-Need at least one of `--auth-log` or `--access-log`. Sample logs are in `tests/sample_logs` if you want to try it without real files.
+Needs at least one of `--auth-log` or `--access-log`. Sample logs are in `tests/sample_logs`.
 
 ## What it flags
 
 - 5+ failed SSH logins from one IP in 10 minutes
-- A login that succeeds right after 3+ failed attempts from the same IP
-- 20+ 403/404 responses from one IP in 5 minutes, usually means scanning
-- SSH logins between 10pm and 5am, shown as context, not a hard alert, plenty of people work odd hours
+- A login right after 3+ failed attempts from the same IP
+- 20+ 403/404 responses from one IP in 5 minutes
+- SSH logins between 10pm and 5am, shown as context, not an alert
 
-Thresholds are hardcoded for now, no CLI flags yet.
+Thresholds are hardcoded for now.
 
-## What's broken or missing
+## Known limitations
 
-auth.log has no year in its timestamps, so the year gets guessed off the current date. Breaks if your log crosses a December/January boundary.
-
-Off-hours detection has no timezone awareness, just whatever local time the server clock had. Same reason it's flagged as context and not an alert.
-
-Brute force and scanning detection use fixed time buckets, not a real sliding window, so an attack split across a bucket boundary can slip through. Known gap, fixing it next.
-
-Nothing persists between runs either, same log lines can get flagged again the next day if they're still inside the window. No tests yet. Configurable thresholds, JSON output, and the sliding window fix are next.
+auth.log has no year in its timestamps, so the year is guessed from the current date, breaks across a December/January boundary. Off-hours detection has no timezone awareness. Brute force and scanning detection use fixed time buckets instead of a true sliding window, so an attack split across a boundary can slip through. Nothing persists between runs. No tests yet.
